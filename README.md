@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./assets/data-hound-logo.png" alt="Data Hound Logo" width="400"/>
+</p>
+
 # 🐾 Data Hound – Hackathon Project
 
 **Excited to share our hackathon project, _Data Hound_ – an advanced Copilot Studio agent for comprehensive monitoring and observability across enterprise applications, Azure services, Dataverse, and more!**
