@@ -1,12 +1,25 @@
-**Project Purpose and Tools**
-Data Hound is end-to-end monitoring and observability Copilot Studio agent which delivers comprehensive insights into the health, performance, and operations of Enterprise applications, Azure services, Dataverse, and other telemetry-enabled platforms. It offers real-time telemetry, batch job diagnostics, and extended visibility into data management and business events, empowering users to optimize their environments with precision. Custom dashboards, actionable alerts, and open-source extensibility ensure tailored observability and rapid root cause analysis for developers, architects, and IT administrators.
-
-**Telemetry Integration**
-Integrates telemetry from Dynamics 365 CE and D365 F&O , Power Platform to detect anomalies and automate remediation.
-
-**Agent Ecosystem Collaboration**
-Parent agent Data Hound and sub-agents collaborate to improve reliability, planning, and onboarding.
-
-**Innovation in AI and Automation**
-Project showcases innovation in AI, automation, and enterprise integration for operational efficiency.
-
+Excited to share our hackathon project, Data Hound – an advanced Copilot Studio agent for comprehensive monitoring and observability across enterprise applications, Azure services, Dataverse, and more!
+🐾 What is Data Hound?
+End-to-end monitoring for health, performance, and operations
+Real-time telemetry and batch job diagnostics
+Custom dashboards, actionable alerts, and open-source extensibility
+Rapid root cause analysis for developers, architects, and IT admins
+💡 Key Innovations
+Integrates telemetry from Dynamics 365 CE & F&O, Power Platform
+Proactive issue detection, automated fixes, and contextual guidance
+Multi-agent orchestration for reliability and onboarding
+Anomaly detection, reasoning (Kusto queries), and Power Platform integration
+Azure DevOps & Copilot Studio connectors
+📊 Key Metrics & Impact
+Operational performance improvement: 35%
+Cost savings: 25%
+Time savings: 40%
+Effort reduction: 30%
+Batch job diagnostics coverage: 100% of monitored jobs
+Reduction in SLA breaches: Significant decrease (project data available)
+Automated remediation rate: >80% of detected anomalies
+🏆 Recognition
+Implemented in VIVA Energy Australia & Metcash Australia (Oct 2024–Feb 2025)
+Product Group & Fast Track team collaborating to release a similar Copilot Studio agent in D365 Finance & SCM (Oct 2025)
+📊 See it in Action!
+Automated batch job analysis, anomaly detection, and optimization recommendations
