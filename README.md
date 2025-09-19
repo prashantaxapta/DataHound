@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/data-hound-logo.png" alt="Data Hound Logo" width="400"/>
+  <img src="./assets/DataHoundLogo.png" alt="Data Hound Logo" width="400"/>
 </p>
 
 # 🐾 Data Hound – Hackathon Project
