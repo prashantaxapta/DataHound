@@ -61,7 +61,7 @@
 
 ## 🏆 Recognition
 
-🏅 Implemented in **VIVA Energy Australia** & **Metcash Australia** (Oct 2024–Feb 2025)  
+🏅 Core Solution implemented in **VIVA Energy Australia** , **Blue Scope Australia** & **Metcash Australia** (Oct 2024–Feb 2025)  
 🤝 Collaboration with Product Group & Fast Track team to release a similar Copilot Studio agent in **D365 Finance & SCM** (Oct 2025)  
 
 ---
