@@ -1,0 +1,174 @@
+// ====== PARAMETERS ======
+let model_window = 7d;     // analyze last 7 days
+let t_lowPct  = 20.0;      // MEDIUM if abs(% deviation) >= this
+let t_highPct = 50.0;      // HIGH   if abs(% deviation) >= this
+let t_flatPct = 5.0;       // within +/- this % = "Flat" trend
+let _batchJobId = '';       // optional filter; leave empty for all
+let _groupBy = "ClassName"; // "ClassName" (default) or "Caption"
+// ====== BASE: shape Activity -> elapsed duration (minutes) ======
+let base =
+customEvents
+| where timestamp between (ago(model_window) .. now())
+| where name in ("BatchTaskStart","BatchTaskFinished","BatchTaskFailure")
+| extend CD = parse_json(customDimensions)
+| extend Info = parse_json(tostring(CD.InfoMessage))
+| extend ActivityId      = tostring(CD.activityId)
+| extend ClassName       = tostring(CD.ClassName)
+| extend Caption         = tostring(CD.BatchJobName)
+| extend BatchJobId      = tostring(CD.BatchJobId)
+| extend BatchJobTaskId1 = tostring(CD.BatchJobTaskId)
+| extend BatchJobTaskId2 = tostring(CD.BatchTaskId)
+| extend BatchJobTaskId  = iif(isnotempty(BatchJobTaskId1), BatchJobTaskId1, BatchJobTaskId2)
+| extend StartTime       = iff(name == "BatchTaskStart",    timestamp, datetime(null))
+| extend EndTime         = iff(name == "BatchTaskFinished", timestamp, datetime(null))
+| extend ErrorTime       = iff(name == "BatchTaskFailure",  timestamp, datetime(null))
+| extend RetryCount      = iff(name == "BatchTaskStart", todouble(Info.RetryCount), real(null))
+| project StartTime, EndTime, ErrorTime, RetryCount, ActivityId, Caption, ClassName, BatchJobId, BatchJobTaskId
+| where isempty(_batchJobId) or tostring(BatchJobId) in (_batchJobId)
+| summarize StartTime      = min(StartTime),
+            CompletionTime = max(EndTime),
+            ErrorTime      = max(ErrorTime),
+            RetryCount     = take_any(RetryCount),
+            ClassName      = any(ClassName),
+            Caption        = any(Caption),
+            BatchJobId     = any(BatchJobId),
+            BatchJobTaskId = any(BatchJobTaskId)
+  by ActivityId
+| where isnotempty(StartTime)
+| extend ElapsedTime = iff(isnotempty(CompletionTime), CompletionTime - StartTime, timespan(null))
+| where isnotnull(ElapsedTime) // keep only completed tasks
+| extend Key       = case(_groupBy == "Caption", Caption, ClassName)  // grouping dimension
+| extend JobIdKey  = tostring(BatchJobId)
+| extend TaskIdKey = tostring(BatchJobTaskId)
+| project Key, JobIdKey, TaskIdKey, StartTime, CompletionTime, ElapsedMin = toreal(ElapsedTime / 1m);
+// ====== 7-day bounds (first start & last end) ======
+let bounds7 =
+base
+| where CompletionTime >= ago(7d)
+| summarize FirstStartTime7d = min(StartTime),
+            LastEndTime7d    = max(CompletionTime)
+  by Key, JobIdKey, TaskIdKey;
+// ====== WINDOWED SUMMARIES (cumulative 1d / 3d / 7d using CompletionTime) ======
+let s1 =
+base
+| where CompletionTime >= ago(1d)
+| summarize Runs1d = count(),
+            P50_1d = percentile(ElapsedMin, 50),
+            Avg_1d = avg(ElapsedMin),
+            P95_1d = percentile(ElapsedMin, 95)
+  by Key, JobIdKey, TaskIdKey;
+let s3 =
+base
+| where CompletionTime >= ago(3d)
+| summarize Runs3d = count(),
+            P50_3d = percentile(ElapsedMin, 50),
+            Avg_3d = avg(ElapsedMin),
+            P95_3d = percentile(ElapsedMin, 95)
+  by Key, JobIdKey, TaskIdKey;
+let s7 =
+base
+| where CompletionTime >= ago(7d)
+| summarize Runs7d = count(),
+            P50_7d = percentile(ElapsedMin, 50),
+            Avg_7d = avg(ElapsedMin),
+            P95_7d = percentile(ElapsedMin, 95)
+  by Key, JobIdKey, TaskIdKey;
+// ====== (Optional) Non-overlapping bucket counts to highlight differences ======
+let bucket_counts =
+base
+| summarize
+    Runs1d_only = countif(CompletionTime between (ago(1d) .. now())),
+    Runs2to3d   = countif(CompletionTime between (ago(3d) .. ago(1d))),
+    Runs4to7d   = countif(CompletionTime between (ago(7d) .. ago(3d)))
+  by Key, JobIdKey, TaskIdKey;
+// ====== JOIN WINDOWS & COMPUTE DEVIATIONS/SEVERITY/TREND ======
+s7
+| join kind=fullouter s3 on Key, JobIdKey, TaskIdKey
+| join kind=fullouter s1 on Key, JobIdKey, TaskIdKey
+| extend Key       = coalesce(Key, Key1, Key2),
+         JobIdKey  = coalesce(JobIdKey, JobIdKey1, JobIdKey2),
+         TaskIdKey = coalesce(TaskIdKey, TaskIdKey1, TaskIdKey2)
+| project-away Key1, Key2, JobIdKey1, JobIdKey2, TaskIdKey1, TaskIdKey2
+| extend // coalesce numeric fields; 7d is the baseline
+    Runs7d = tolong(coalesce(Runs7d, 0)),
+    Runs3d = tolong(coalesce(Runs3d, 0)),
+    Runs1d = tolong(coalesce(Runs1d, 0)),
+    P50_7d = toreal(P50_7d),
+    P50_3d = toreal(P50_3d),
+    P50_1d = toreal(P50_1d),
+    Avg_7d = toreal(Avg_7d),
+    Avg_3d = toreal(Avg_3d),
+    Avg_1d = toreal(Avg_1d),
+    P95_7d = toreal(P95_7d),
+    P95_3d = toreal(P95_3d),
+    P95_1d = toreal(P95_1d)
+| extend BaselineMin = P50_7d,           // "Original timing" = 7d median
+         Obs1dMin   = P50_1d,            // observed timings (medians)
+         Obs3dMin   = P50_3d,
+         Obs7dMin   = P50_7d
+// Percentage deviations vs baseline (guard against zero/unknown baseline)
+| extend PctDev1dRaw = iff(isnotnull(BaselineMin) and BaselineMin != 0.0,
+                           100.0 * (Obs1dMin - BaselineMin) / BaselineMin, real(null))
+| extend PctDev3dRaw = iff(isnotnull(BaselineMin) and BaselineMin != 0.0,
+                           100.0 * (Obs3dMin - BaselineMin) / BaselineMin, real(null))
+// Trend labels vs baseline using a small flat band
+| extend Trend1d = case(isnull(PctDev1dRaw), "Unknown",
+                        PctDev1dRaw >  t_flatPct, "Up",
+                        PctDev1dRaw < -t_flatPct, "Down", "Flat")
+| extend Trend3d = case(isnull(PctDev3dRaw), "Unknown",
+                        PctDev3dRaw >  t_flatPct, "Up",
+                        PctDev3dRaw < -t_flatPct, "Down", "Flat")
+| extend Trend7d = "Baseline"
+// Severity per window
+| extend Severity1d =
+    case(isnull(PctDev1dRaw), "Unknown",
+         abs(PctDev1dRaw) >= t_highPct, "High",
+         abs(PctDev1dRaw) >= t_lowPct,  "Medium",
+         "Low")
+| extend Severity3d =
+    case(isnull(PctDev3dRaw), "Unknown",
+         abs(PctDev3dRaw) >= t_highPct, "High",
+         abs(PctDev3dRaw) >= t_lowPct,  "Medium",
+         "Low")
+// Rank and overall severity = max_of the two
+| extend Rank1d = case(Severity1d == "High", 3, Severity1d == "Medium", 2, Severity1d == "Low", 1, 0),
+         Rank3d = case(Severity3d == "High", 3, Severity3d == "Medium", 2, Severity3d == "Low", 1, 0)
+| extend OverallSeverityRank = toint(max_of(Rank1d, Rank3d))
+| extend OverallSeverity =
+    case(OverallSeverityRank == 3, "High",
+         OverallSeverityRank == 2, "Medium",
+         OverallSeverityRank == 1, "Low", "Unknown")
+// Final display fields
+| extend PctDev1d     = round(PctDev1dRaw, 1),
+         PctDev1dPct  = iff(isnull(PctDev1dRaw), "n/a", strcat(tostring(round(PctDev1dRaw, 1)), "%")),
+         PctDev3d     = round(PctDev3dRaw, 1),
+         PctDev3dPct  = iff(isnull(PctDev3dRaw), "n/a", strcat(tostring(round(PctDev3dRaw, 1)), "%"))
+// Join non-overlapping buckets and 7-day bounds
+| join kind=leftouter bucket_counts on Key, JobIdKey, TaskIdKey
+| join kind=leftouter bounds7       on Key, JobIdKey, TaskIdKey
+| project
+    // Identity
+    GroupBy = Key,
+    BatchJobId   = JobIdKey,
+    BatchJobTaskId = TaskIdKey,
+    // 7-day bounds
+    FirstStartTime7d = FirstStartTime7d,
+    LastEndTime7d    = LastEndTime7d,
+    // Run volumes (cumulative windows)
+    Runs1d, Runs3d, Runs7d,
+    // Non-overlapping buckets (to visualize spread)
+    Runs1d_only, Runs2to3d, Runs4to7d,
+    // Observed timings (median)
+    Observed1dMin = round(Obs1dMin, 2),
+    Observed3dMin = round(Obs3dMin, 2),
+    Observed7dMin = round(Obs7dMin, 2),
+    // Baseline & deviations
+    BaselineMin   = round(BaselineMin, 2),
+    PctDev1d, PctDev1dPct, Severity1d, Trend1d,
+    PctDev3d, PctDev3dPct, Severity3d, Trend3d,
+    // Optional additional stats (tail & averages)
+    Avg1dMin = round(Avg_1d, 2), P95_1d,
+    Avg3dMin = round(Avg_3d, 2), P95_3d,
+    Avg7dMin = round(Avg_7d, 2), P95_7d,
+    OverallSeverity, OverallSeverityRank
+| order by OverallSeverityRank desc, abs(PctDev1d) desc, abs(PctDev3d) desc, Runs7d desc
