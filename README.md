@@ -71,7 +71,4 @@
 
 ---
 
-### 🔗 **Next Steps**
-- [ ] Add **demo video link**
-- [ ] Include **architecture diagram**
-- [ ] Add **installation instructions**
+
