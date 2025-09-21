@@ -52,10 +52,9 @@
 ## 🏗️ Architecture Diagram
 
 <p align="center">
-  <img src="./assets/data-hound-architecture.png" alt="Data Hound Architecture Diagram" width="700"/>
+  <img src="./assets/Data Hound Architecture.png" alt="Data Hound Architecture Diagram" width="1500"/>
 </p>
 
-*(Add your architecture diagram as `data-hound-architecture.png` in the `assets` folder.)*
 
 ---
 
