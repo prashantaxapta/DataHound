@@ -1,0 +1,35 @@
+let _batchJobId = '';
+let _endTime = datetime(2025-09-21T04:47:20Z);
+let _startTime = datetime(2025-09-21T03:47:20Z);
+customEvents
+| where     timestamp between (_startTime .. _endTime)
+| where     name in ("BatchTaskStart","BatchTaskFinished","BatchTaskFailure")
+| extend    CustomDimensionsParsed = parse_json(customDimensions)
+| extend    InfoMessageParsed   = parse_json(tostring(CustomDimensionsParsed.InfoMessage))
+| extend    ActivityId          = tostring(CustomDimensionsParsed.activityId)
+| extend    ClassName           = tostring(CustomDimensionsParsed.ClassName)
+| extend    BatchJobId          = tostring(CustomDimensionsParsed.BatchJobId)
+| extend    BatchJobTaskId1      = tostring(CustomDimensionsParsed.BatchJobTaskId)
+| extend    BatchJobTaskId2      = tostring(CustomDimensionsParsed.BatchTaskId)
+| extend    BatchJobTaskId      = iif(isnotempty(BatchJobTaskId1), BatchJobTaskId1, BatchJobTaskId2) // Temporary trick until the batch team synchronizes the field names across events
+| extend Caption = tostring(CustomDimensionsParsed.BatchJobCaption)
+//| where isempty(_batchAOS) or cloud_RoleInstance in(_batchAOS)
+| extend    StartTime           = iff(name == "BatchTaskStart"    , timestamp, datetime(null))
+| extend    EndTime             = iff(name == "BatchTaskFinished"   , timestamp, datetime(null))
+| extend    ErrorTime           = iff(name == "BatchTaskFailure"   , timestamp, datetime(null))
+| extend    RetryCount          = iff(name == "BatchTaskStart"    , InfoMessageParsed.RetryCount, "")
+| project   StartTime, EndTime,ErrorTime,RetryCount, ActivityId, ClassName, BatchJobId, RoleInstance = cloud_RoleInstance, BatchJobTaskId,Caption
+| where     isempty(_batchJobId) or tostring(BatchJobId) in (_batchJobId)
+| summarize   StartTime         = min(StartTime),
+              CompletionTime    = max(EndTime),
+              ErrorTime         = max(ErrorTime),
+              RetryCount        = take_any(RetryCount),
+              ClassName         = any(ClassName), 
+              BatchJobId        = any(BatchJobId),
+              BatchJobTaskId    = any(BatchJobTaskId),
+              RoleInstance      = any(RoleInstance),
+              Caption = any(Caption)
+by ActivityId
+| where isnotempty(StartTime)
+| extend BatchAOS = strcat(split(RoleInstance, "-")[0])
+| project ActivityId, BatchAOS, BatchJobId,Caption, BatchJobTaskId, ClassName, StartTime, CompletionTime, ElapsedTime = CompletionTime - StartTime, RetryCount
